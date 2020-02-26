@@ -40,9 +40,7 @@ local configOptions = {
 			desc = "Minimum rarity for master looting",
 			type = "select",
 			values = {
-							[0] = "Poor",
-
-				[1] = "Common", --TODO remove
+				[1] = "Common", -- TODO remove
 				[2] = "Uncommon",
 				[3] = "Rare",
 				[4] = "Epic"
@@ -198,7 +196,7 @@ function processLoot()
 			if priorityEntry ~= nil then 					
 				masterLootCandidates[name] = {
 					["link"] = link,
-					["priority"] = priorityEntry.priority.." > "..DEFAULT_PRIORITY,
+					["priority"] = priorityEntry.priority,
 					["note"] = priorityEntry.note,
 					["icon"] = icon
 				}
@@ -262,20 +260,17 @@ function showLootFrame(loot)
 			local text, playerName = ...
 			local splitText = mySplit(text, " ")
 			-- Only handle valid rolls of 1-100
-			if "rolls" == splitText[2] and "(1-100)" == splitText[4] then
-				-- TODO monitor all rolls, compare rolls for max
-				if currentItem["rollMonitor"] ~= nil then 
-					local newRoll = toNumber(splitText[3])
-					local playerName = splitText[1]
-					rolls[playerName] = newRoll
-					if newRoll > currentItem.rolls[maxRoll] then
-						maxRoll = playerName
-						currentItem.rollMonitor:SetText(playerName.." - "..newRoll)
-
-					elseif newRoll == currentItem.maxRoll then
-						currentItem.rollMonitor:SetText("Tie: "..currentItem.rollMonitor:GetText..playerName)
-					end
+			if "rolls" == splitText[2] and "(1-100)" == splitText[4] and currentItem["rollMonitor"] ~= nil then
+				local newRoll = tonumber(splitText[3])
+				local playerName = splitText[1]
+				if newRoll > currentItem.maxRoll then
+					currentItem.rolls[newRoll] = playerName
+					currentItem.maxRoll = newRoll
+				elseif newRoll == currentItem.maxRoll then
+					currentItem.rolls[newRoll] = currentItem.rolls[newRoll].." + "..playerName
 				end
+				
+				currentItem.rollMonitor:SetText(currentItem.rolls[newRoll].." - "..newRoll)
 			end
 		end
 	end)
@@ -292,16 +287,20 @@ function showLootFrame(loot)
 		itemGroup:SetLayout("Flow")
 		
 		lootFrame:AddChild(itemGroup)
-				
+		local itemIcon = AceGUI:Create("Icon") 
+		itemIcon:SetWidth(25)
+		itemIcon:SetImageSize(20, 20)
+		itemIcon:SetImage(item.icon)
+		itemGroup:AddChild(itemIcon)
+		
 		local itemLabel = AceGUI:Create("Label") 
 		itemLabel:SetText(item.link)
-		itemLabel:SetWidth(150)
-		itemLabel:SetImage(item.icon)
+		itemLabel:SetWidth(130)
 		itemGroup:AddChild(itemLabel)
 		
 		local rollMonitor = AceGUI:Create("InteractiveLabel") 
 		rollMonitor:SetText("None")
-		rollMonitor:SetWidth(150)
+		rollMonitor:SetWidth(120)
 		itemGroup:AddChild(rollMonitor)
 		
 		local splitPriority = mySplit(item.priority, ">")
@@ -310,7 +309,7 @@ function showLootFrame(loot)
 			
 			local button = AceGUI:Create("Button") 
 			button:SetText(line)
-			button:SetWidth(150)
+			button:SetWidth(135)
 			button:SetCallback("OnClick", function() 
 				currentItem = item
 				currentItem.rollMonitor = rollMonitor
