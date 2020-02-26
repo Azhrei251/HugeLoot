@@ -40,6 +40,8 @@ local configOptions = {
 			desc = "Minimum rarity for master looting",
 			type = "select",
 			values = {
+							[0] = "Poor",
+
 				[1] = "Common", --TODO remove
 				[2] = "Uncommon",
 				[3] = "Rare",
@@ -181,7 +183,7 @@ function processLoot()
 	local masterLootCandidates = {}
 	local numItemsToMasterLoot = 0
 	for i = 1, #currentLoot do
-		local _, name, _, _, quality = GetLootSlotInfo(i)
+		local icon, name, _, _, quality = GetLootSlotInfo(i)
 		local link = GetLootSlotLink(i)
 		--HugeLoot:Print("Processing item "..i.." with name "..name)
 		
@@ -197,7 +199,8 @@ function processLoot()
 				masterLootCandidates[name] = {
 					["link"] = link,
 					["priority"] = priorityEntry.priority.." > "..DEFAULT_PRIORITY,
-					["note"] = priorityEntry.note
+					["note"] = priorityEntry.note,
+					["icon"] = icon
 				}
 			else
 				local specTable = {}--GetItemSpecInfo(name)
@@ -205,13 +208,15 @@ function processLoot()
 					masterLootCandidates[name] = {
 						["link"] = link,
 						["priority"] = specTable[0],
-						["note"] = ""
+						["note"] = "",
+						["icon"] = icon
 					}
 				else 
 					masterLootCandidates[name] = {
 						["link"] = link,
 						["priority"] = DEFAULT_PRIORITY,
-						["note"] = ""
+						["note"] = "",
+						["icon"] = icon
 					}
 				end
 			end
@@ -231,16 +236,49 @@ function processLoot()
 end
 
 function showLootFrame(loot) 
-		HugeLoot:Print("Showing loot")
-	local lootFrame = AceGUI:Create("Frame")
-	lootFrame:SetCallback("OnClose",function(widget) AceGUI:Release(widget) end)
-	lootFrame:SetTitle("Huge Loot")
+	--HugeLoot:Print("Showing loot")
+	local currentItem = {}	
+	
+	local baseContainer = AceGUI:Create("Frame")
+	baseContainer:SetTitle("Huge Loot")
 	local lootName = UnitName("target")
 	if lootName == nil then 
 		lootName = "Unknown"
 	end
-	lootFrame:SetStatusText("Currently looting "..lootName)
+	baseContainer:SetStatusText("Currently looting "..lootName)
+	baseContainer:SetCallback("OnClose", function(widget) AceGUI:Release(widget) end)
+	baseContainer:SetLayout("Fill")
+
+	--baseContainer:SetAutoAdjustHeight(true)
+	
+	local lootFrame = AceGUI:Create("ScrollFrame")
 	lootFrame:SetLayout("List")
+	baseContainer:AddChild(lootFrame)
+
+	local rollMonitorFrame = CreateFrame("Frame")
+	rollMonitorFrame:RegisterEvent("CHAT_MSG_SYSTEM") -- Fired on receiving an emote chat message
+	rollMonitorFrame:SetScript("OnEvent", function(self, event, ...)
+		if event == "CHAT_MSG_SYSTEM" then
+			local text, playerName = ...
+			local splitText = mySplit(text, " ")
+			-- Only handle valid rolls of 1-100
+			if "rolls" == splitText[2] and "(1-100)" == splitText[4] then
+				-- TODO monitor all rolls, compare rolls for max
+				if currentItem["rollMonitor"] ~= nil then 
+					local newRoll = toNumber(splitText[3])
+					local playerName = splitText[1]
+					rolls[playerName] = newRoll
+					if newRoll > currentItem.rolls[maxRoll] then
+						maxRoll = playerName
+						currentItem.rollMonitor:SetText(playerName.." - "..newRoll)
+
+					elseif newRoll == currentItem.maxRoll then
+						currentItem.rollMonitor:SetText("Tie: "..currentItem.rollMonitor:GetText..playerName)
+					end
+				end
+			end
+		end
+	end)
 	
 	-- For each item, add a label, then a button for each step in prio, followed by the note.
 	for name, item in pairs(loot) do 
@@ -258,7 +296,13 @@ function showLootFrame(loot)
 		local itemLabel = AceGUI:Create("Label") 
 		itemLabel:SetText(item.link)
 		itemLabel:SetWidth(150)
+		itemLabel:SetImage(item.icon)
 		itemGroup:AddChild(itemLabel)
+		
+		local rollMonitor = AceGUI:Create("InteractiveLabel") 
+		rollMonitor:SetText("None")
+		rollMonitor:SetWidth(150)
+		itemGroup:AddChild(rollMonitor)
 		
 		local splitPriority = mySplit(item.priority, ">")
 		for i = 1, #splitPriority do
@@ -267,7 +311,13 @@ function showLootFrame(loot)
 			local button = AceGUI:Create("Button") 
 			button:SetText(line)
 			button:SetWidth(150)
-			button:SetCallback("OnClick", function() SendChatMessage(item.link..line, CHANNEL_TO_MASTER_LOOT); end)
+			button:SetCallback("OnClick", function() 
+				currentItem = item
+				currentItem.rollMonitor = rollMonitor
+				currentItem.rolls = {}
+				currentItem.maxRoll = 0
+				SendChatMessage(item.link..line, CHANNEL_TO_MASTER_LOOT);
+			end)
 			itemGroup:AddChild(button)
 		end
 		
@@ -276,6 +326,10 @@ function showLootFrame(loot)
 		itemNote:SetText(item.note)
 		itemGroup:AddChild(itemNote)
 	end
+end
+
+function processRoll(playerName, rollAmount) 
+	HugeLoot:Print("Received roll from "..playerName.." for value "..rollAmount)
 end
 
 -- Blindly copied from stack overflow, review if it works poorly
