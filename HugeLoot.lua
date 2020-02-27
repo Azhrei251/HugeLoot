@@ -196,12 +196,16 @@ function processLoot()
 			if priorityEntry ~= nil then 					
 				masterLootCandidates[name] = {
 					["link"] = link,
-					["priority"] = priorityEntry.priority,
+					["priority"] = priorityEntry.priority.." > Open Roll",
 					["note"] = priorityEntry.note,
 					["icon"] = icon
 				}
 			else
-				local specTable = {}--GetItemSpecInfo(name)
+				HugeLoot:Print("Stats for "..name)
+				local specTable = GetItemStats(link)
+				for k, v in pairs(specTable) do
+					HugeLoot:Print("Key: "..k.." | Value: "..v)
+				end
 				if #specTable >= 1 then 
 					masterLootCandidates[name] = {
 						["link"] = link,
