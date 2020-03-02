@@ -11,16 +11,20 @@ local ITEMS_TO_NOT_ANNOUNCE = {
 	["Fiery Core"] = true,
 	["Elementium Ore"] = true
 }
+local ITEM_TO_ALWAYS_MASTER_LOOT = {
+	["Onyxia Hide Backpack"] = true
+}
 local announcedGuids = {}
 local prioritySet = {}
 local isShowing = false
-
-HugeLoot:RegisterChatCommand("hgl", "ProcessCommand")
+local currentLoot = nil
+local currentItemName = nil
 
 -- Register for events
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("LOOT_OPENED") -- Fired on user opening a loot panel
 frame:RegisterEvent("CHAT_MSG_LOOT") -- Fired on someone receiving loot
+frame:RegisterEvent("CHAT_MSG_SYSTEM") -- Fired on receiving an system chat message
 frame:SetScript("OnEvent", function(self, event, ...)
 	if event == "LOOT_OPENED" then 
 		processLoot()
@@ -29,6 +33,22 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		message, two, _, _, receiver = ...
 		if string.find(message, "receive") and receiver ~= nil then
 			saveLootedItem(string.match(message, "%[(.*)"), receiver)
+		end
+	elseif event == "CHAT_MSG_SYSTEM" then
+		local text, playerName = ...
+		local splitText = mySplit(text, " ")
+		-- Only handle valid rolls of 1-100
+		if string.find(text, "rolls") and "(1-100)" == splitText[4] and currentItemName ~= nil and currentLoot[currentItemName]["rollMonitor"] ~= nil then
+			local newRoll = tonumber(splitText[3])
+			local playerName = splitText[1]
+			if newRoll > currentLoot[currentItemName].maxRoll then
+				currentLoot[currentItemName].rolls[newRoll] = playerName
+				currentLoot[currentItemName].maxRoll = newRoll
+			elseif newRoll == currentLoot[currentItemName].maxRoll then
+				currentLoot[currentItemName].rolls[newRoll] = currentLoot[currentItemName].rolls[newRoll].." + "..playerName
+			end
+			
+			showRoll(currentLoot[currentItemName])
 		end
 	end
 end)
@@ -103,6 +123,7 @@ function HugeLoot:OnInitialize()
 		createLDBLauncher()
 	end
 
+	HugeLoot:RegisterChatCommand("hgl", "ProcessCommand")
 end
 
 function HugeLoot:ProcessCommand(input)
@@ -227,13 +248,14 @@ function processLoot()
 			lootMessage = lootMessage..link
 		end
 		
-		if quality >= minItemQualityToMasterLoot then 
+		if quality >= minItemQualityToMasterLoot or ITEM_TO_ALWAYS_MASTER_LOOT[name] ~= nil then 
 			numItemsToMasterLoot = numItemsToMasterLoot + 1
 			local priorityEntry = prioritySet[name]
 			
 			--FIXME duplicates
 			if priorityEntry ~= nil then 					
-				masterLootCandidates[name] = {
+				masterLootCandidates[#masterLootCandidates + 1] = {
+					["name"] = name,
 					["link"] = link,
 					["priority"] = priorityEntry.priority.." > Roll",
 					["note"] = priorityEntry.note,
@@ -245,14 +267,16 @@ function processLoot()
 					class = "Warr Tank > Fury"
 				end
 				if class ~= nil then 
-					masterLootCandidates[name] = {
+					masterLootCandidates[#masterLootCandidates + 1] = {
+						["name"] = name,
 						["link"] = link,
 						["priority"] = class,
 						["note"] = "",
 						["icon"] = icon
 					}
 				else 
-					masterLootCandidates[name] = {
+					masterLootCandidates[#masterLootCandidates + 1] = {
+						["name"] = name,
 						["link"] = link,
 						["priority"] = DEFAULT_PRIORITY,
 						["note"] = "",
@@ -264,14 +288,15 @@ function processLoot()
 	end
 	
 	-- Announce the links. Only do so once per GUID
-	-- FIXME Character limit could be a problem
+	-- FIXME Character limit is a problem
 	if doAnnnounce and guid ~= nil and not(announcedGuids[guid]) and string.len(lootMessage) ~= 0 then
 		announcedGuids[guid] = true
 		SendChatMessage(lootMessage, CHANNEL_TO_ANNOUNCE);
 	end
 	
 	if numItemsToMasterLoot >= 1 then 
-		showLootFrame(masterLootCandidates)
+		currentLoot = masterLootCandidates
+		showLootFrame()
 	end
 end
 
@@ -282,6 +307,28 @@ local function showRoll(item)
 		else 
 			item.rollMonitor:SetText("None")
 		end
+		
+		local setColor = false
+		for i = 1, GetNumGroupMembers() do 
+			local unitId = UnitId(raid..i)
+			if UnitName(unitId) == item.roll[item.maxRoll] then
+				local class = UnitClass(unitId)
+				local color = RAID_CLASS_COLORS[class]
+				
+				HugeLoot:Print(color)
+				for k, v in pairs(color) do
+					HugeLoot:Print("k: "..key.." | v: "..v)
+				end
+				
+				local r, g, b = GetClassColor(class)
+				
+				setColor = true
+				item.rollMonitor:SetColor(r, g, b)
+			end
+		end
+		
+		--Default color to white if no class color found
+		if not(setColor) then item.rollMonitor:SetColor(255, 255, 255) end
 	end
 end
 
@@ -290,21 +337,32 @@ function saveLootedItem(item, name)
 	if itemHistoryDB == nil then
 		itemHistoryDB = {}
 	end
-	itemHistoryDB[date("%y-%m-%d %H:%M:%S")] = {
+	
+	local dbEntry = {
 		["item"] = item,
 		["name"] = name
 	}
+	
+	if currentLoot ~= nil then 
+		for i = 1, #currentLoot do
+			local inList = currentLoot[i]
+			if string.find(item, inList.name) and inList.rolls[inList.maxRoll] == name then
+				dbEntry["details"] = inList
+				break
+			end
+		end
+	end
+	
+	itemHistoryDB[date("%y-%m-%d %H:%M:%S")] = dbEntry
 	HugeLoot.db.profile.lootHistory = itemHistoryDB
 end
 
-function showLootFrame(loot) 
-	if isShowing then
+function showLootFrame() 
+	if isShowing or currentLoot == nil then
 		return
 	else 
 		isShowing = true
 	end
-	
-	local currentItemName = nil
 	
 	local baseContainer = AceGUI:Create("Frame")
 	baseContainer:SetTitle("Huge Loot")
@@ -313,44 +371,27 @@ function showLootFrame(loot)
 		lootName = "Unknown"
 	end
 	baseContainer:SetStatusText("Currently looting "..lootName)
-	baseContainer:SetCallback("OnClose", function(widget) AceGUI:Release(widget) isShowing = false end)
+	baseContainer:SetCallback("OnClose", function(widget) 
+		AceGUI:Release(widget) 
+		isShowing = false
+		currentItemName = nil
+		currentLoot = nil
+	end)
 	baseContainer:SetLayout("Fill")
 	
 	local lootFrame = AceGUI:Create("ScrollFrame")
 	lootFrame:SetLayout("List")
 	baseContainer:AddChild(lootFrame)
-
-	local rollMonitorFrame = CreateFrame("Frame")
-	rollMonitorFrame:RegisterEvent("CHAT_MSG_SYSTEM") -- Fired on receiving an emote chat message
-	rollMonitorFrame:SetScript("OnEvent", function(self, event, ...)
-		if event == "CHAT_MSG_SYSTEM" then
-			local text, playerName = ...
-			local splitText = mySplit(text, " ")
-			-- Only handle valid rolls of 1-100
-			if "rolls" == splitText[2] and "(1-100)" == splitText[4] and loot[currentItemName]["rollMonitor"] ~= nil then
-				local newRoll = tonumber(splitText[3])
-				local playerName = splitText[1]
-				if newRoll > loot[currentItemName].maxRoll then
-					loot[currentItemName].rolls[newRoll] = playerName
-					loot[currentItemName].maxRoll = newRoll
-				elseif newRoll == loot[currentItemName].maxRoll then
-					loot[currentItemName].rolls[newRoll] = loot[currentItemName].rolls[newRoll].." + "..playerName
-				end
-				
-				showRoll(loot[currentItemName])
-			end
-		end
-	end)
 	
-	-- For each item, add a label, then a button for each step in prio, followed by the note.
-	for name, item in pairs(loot) do 
+	-- For each item, add a label, roll manipulator buttons, roll monitor, then a button for each step in prio, followed by the note.
+	for i = 1, #currentLoot do
+		local item = currentLoot[i]
 		if item.priority == nil or string.len(item.priority) == 0 then 
 			item.priority = DEFAULT_PRIORITY
 		end
 	
 		local itemGroup = AceGUI:Create("SimpleGroup") 
 		itemGroup:SetFullWidth(true)
-		--itemGroup:SetHeight(100)
 		itemGroup:SetLayout("Flow")
 		
 		lootFrame:AddChild(itemGroup)
@@ -367,7 +408,7 @@ function showLootFrame(loot)
 		
 		local assignButton = AceGUI:Create("Button") 
 		assignButton:SetText("A")
-		assignButton:SetWidth(20)
+		assignButton:SetWidth(25)
 		assignButton:SetCallback("OnClick", function() 
 			itemGroup:Disable()
 		end)
@@ -375,7 +416,7 @@ function showLootFrame(loot)
 				
 		local removeRollerButton = AceGUI:Create("Button") 
 		removeRollerButton:SetText("X")
-		removeRollerButton:SetWidth(20)
+		removeRollerButton:SetWidth(25)
 		removeRollerButton:SetCallback("OnClick", function() 
 			item.rolls[item.maxRoll] = nil
 			local newMax = 0
@@ -406,7 +447,7 @@ function showLootFrame(loot)
 			button:SetText(line)
 			button:SetWidth(135)
 			button:SetCallback("OnClick", function() 
-				currentItemName = name				
+				currentItemName = item.name				
 				SendChatMessage(item.link.." "..line, CHANNEL_TO_MASTER_LOOT);
 			end)
 			itemGroup:AddChild(button)
