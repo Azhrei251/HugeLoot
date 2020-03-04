@@ -226,7 +226,7 @@ local function findClassForSlot(slot)
 end
 
 function processLoot() 
-	HugeLoot:Print("Processing loot")
+	--HugeLoot:Print("Processing loot")
 	local masterlooterRaidID = select(3, GetLootMethod())
 	local isMasterLooter = masterlooterRaidID ~= nil and UnitName("raid"..masterlooterRaidID) == UnitName("player")
 	local guid =  UnitGUID("target")
@@ -236,10 +236,10 @@ function processLoot()
 	
 	-- Build a list of links
 	local lootMessage = ""
-	local currentLoot = GetLootInfo()
+	local currentLootInfo = GetLootInfo()
 	local masterLootCandidates = {}
 	local numItemsToMasterLoot = 0
-	for i = 1, #currentLoot do
+	for i = 1, #currentLootInfo do
 		local icon, name, _, _, quality = GetLootSlotInfo(i)
 		local link = GetLootSlotLink(i)
 		HugeLoot:Print("Processing item "..i.." with name "..name)
@@ -252,7 +252,7 @@ function processLoot()
 			numItemsToMasterLoot = numItemsToMasterLoot + 1
 			local priorityEntry = prioritySet[name]
 			
-			HugeLoot:Print("Adding entry")
+			--HugeLoot:Print("Adding entry")
 			
 			--FIXME duplicates
 			if priorityEntry ~= nil then 					
@@ -298,7 +298,7 @@ function processLoot()
 	
 	if numItemsToMasterLoot >= 1 then 
 		currentLoot = masterLootCandidates
-		showLootFrame(masterLootCandidates)
+		showLootFrame()
 	end
 end
 
@@ -359,9 +359,7 @@ function saveLootedItem(item, name)
 	HugeLoot.db.profile.lootHistory = itemHistoryDB
 end
 
-function showLootFrame(currentLoot) 
-	--HugeLoot:Print("Showing loot frame for loot: "..currentLoot)
-	
+function showLootFrame() 	
 	if isShowing or currentLoot == nil then
 		return
 	else 
