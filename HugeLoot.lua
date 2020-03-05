@@ -330,7 +330,7 @@ local function showRoll(item)
 		end
 		
 		--Default color to white if no class color found
-		if not(setColor) then item.rollMonitor:SetColor(255, 255, 255) end
+		--if not(setColor) then item.rollMonitor:SetColor(255, 255, 255) end
 	end
 end
 
@@ -450,7 +450,7 @@ function showLootFrame()
 			button:SetWidth(135)
 			button:SetCallback("OnClick", function() 
 				currentItemName = item.name				
-				SendChatMessage(item.link.." "..line, CHANNEL_TO_MASTER_LOOT);
+				SendChatMessage(item.link.." "..line, CHANNEL_TO_MASTER_LOOT)
 			end)
 			itemGroup:AddChild(button)
 		end
@@ -458,7 +458,64 @@ function showLootFrame()
 		local itemNote = AceGUI:Create("Label") 
 		itemNote:SetText(item.note)
 		itemGroup:AddChild(itemNote)
+		
+		local button = AceGUI:Create("Button") 
+		button:SetText("LT")
+		button:SetWidth(50)
+		button:SetCallback("OnClick", function() 
+			if item.maxRoll ~= nil then 
+				showLootHistory(item.rolls[item.maxRoll])
+			end
+		end)
 	end
+end
+
+function showLootHistory(player) 
+	if player == nil then return end
+	
+	local playerLoot = getLootForPlayer(player)
+	
+	local baseContainer = AceGUI:Create("Frame")
+	baseContainer:SetTitle("Loot for "..player)
+
+	for dateTime, item in pairs(playerLoot) do
+		local itemLabel = AceGUI:Create("Label") 
+		itemLabel:SetText(dateTime)
+		itemLabel:SetWidth(130)
+		itemGroup:AddChild(itemLabel)
+	
+		local itemIcon = AceGUI:Create("Icon") 
+		itemIcon:SetWidth(25)
+		itemIcon:SetImageSize(20, 20)
+		if item.details.icon ~= nil then 
+			itemIcon:SetImage(item.icon)
+		end
+		itemGroup:AddChild(itemIcon)
+		
+		local itemLabel = AceGUI:Create("Label") 
+		itemLabel:SetWidth(130)
+		if item.details.link ~= nil then
+			itemLabel:SetText(item.link)
+		else
+			itemLabel:SetText(item.item)
+		end
+		itemGroup:AddChild(itemLabel)
+	end
+end
+
+function getLootForPlayer(player) 
+	local itemHistoryDB = HugeLoot.db.profile.lootHistory
+	if itemHistoryDB == nil then return nil end
+	
+	
+	local items = {}
+	for dateTime, item in pairs(itemHistoryDB) do 
+		if item.name == player then
+			items[dateTime] = item
+		end
+	end
+	
+	return items
 end
 
 function processRoll(playerName, rollAmount) 
