@@ -17,8 +17,8 @@ local ITEM_TO_ALWAYS_MASTER_LOOT = {
 local announcedGuids = {}
 local prioritySet = {}
 local isShowing = false
-local currentLoot = nil
-local currentItemName = nil
+currentItems = nil
+currentItemIndex = nil
 
 -- Register for events
 local frame = CreateFrame("Frame")
@@ -38,17 +38,17 @@ frame:SetScript("OnEvent", function(self, event, ...)
 		local text, playerName = ...
 		local splitText = mySplit(text, " ")
 		-- Only handle valid rolls of 1-100
-		if string.find(text, "rolls") and "(1-100)" == splitText[4] and currentItemName ~= nil and currentLoot[currentItemName]["rollMonitor"] ~= nil then
+		if string.find(text, "rolls") and "(1-100)" == splitText[4] and currentItemIndex ~= nil and currentItems[currentItemIndex]["rollMonitor"] ~= nil then
 			local newRoll = tonumber(splitText[3])
 			local playerName = splitText[1]
-			if newRoll > currentLoot[currentItemName].maxRoll then
-				currentLoot[currentItemName].rolls[newRoll] = playerName
-				currentLoot[currentItemName].maxRoll = newRoll
-			elseif newRoll == currentLoot[currentItemName].maxRoll then
-				currentLoot[currentItemName].rolls[newRoll] = currentLoot[currentItemName].rolls[newRoll].." + "..playerName
+			if newRoll > currentItems[currentItemIndex].maxRoll then
+				currentItems[currentItemIndex].rolls[newRoll] = playerName
+				currentItems[currentItemIndex].maxRoll = newRoll
+			elseif newRoll == currentItems[currentItemIndex].maxRoll then
+				currentItems[currentItemIndex].rolls[newRoll] = currentItems[currentItemIndex].rolls[newRoll].." + "..playerName
 			end
 			
-			showRoll(currentLoot[currentItemName])
+			showRoll(currentItems[currentItemIndex])
 		end
 	end
 end)
@@ -136,10 +136,14 @@ function HugeLoot:ProcessCommand(input)
 		else 
 			HugeLoot:Print("Item not found")
 		end
+	elseif string.find(input, "end") then
+		endRoll()
+		
 	elseif input == "help" then 
 		HugeLoot:Print("/hgl config -- Opens/closes the config menu")
 		HugeLoot:Print("/hgl help -- Prints a list of commands")
 		HugeLoot:Print("/hgl priority {itemName} -- Returns the priority information for the given item")
+		HugeLoot:Print("/hgl end -- End the current roll")
 	else
 		HugeLoot:Print("Unrecognised command: "..input.." try /hgl help")
 	end
@@ -297,7 +301,7 @@ function processLoot()
 	end
 	
 	if numItemsToMasterLoot >= 1 then 
-		currentLoot = masterLootCandidates
+		currentItems = masterLootCandidates
 		showLootFrame()
 	end
 end
@@ -345,9 +349,9 @@ function saveLootedItem(item, name)
 		["name"] = name
 	}
 	
-	if currentLoot ~= nil then 
-		for i = 1, #currentLoot do
-			local inList = currentLoot[i]
+	if currentItems ~= nil then 
+		for i = 1, #currentItems do
+			local inList = currentItems[i]
 			if string.find(item, inList.name) and inList.rolls[inList.maxRoll] == name then
 				dbEntry["details"] = inList
 				break
@@ -360,7 +364,7 @@ function saveLootedItem(item, name)
 end
 
 function showLootFrame() 	
-	if isShowing or currentLoot == nil then
+	if isShowing or currentItems == nil then
 		return
 	else 
 		isShowing = true
@@ -376,8 +380,8 @@ function showLootFrame()
 	baseContainer:SetCallback("OnClose", function(widget) 
 		AceGUI:Release(widget) 
 		isShowing = false
-		currentItemName = nil
-		currentLoot = nil
+		currentItemIndex = nil
+		currentItems = nil
 	end)
 	baseContainer:SetLayout("Fill")
 	
@@ -386,8 +390,8 @@ function showLootFrame()
 	baseContainer:AddChild(lootFrame)
 	
 	-- For each item, add a label, roll manipulator buttons, roll monitor, then a button for each step in prio, followed by the note.
-	for i = 1, #currentLoot do
-		local item = currentLoot[i]
+	for i = 1, #currentItems do
+		local item = currentItems[i]
 		if item.priority == nil or string.len(item.priority) == 0 then 
 			item.priority = DEFAULT_PRIORITY
 		end
@@ -449,7 +453,7 @@ function showLootFrame()
 			button:SetText(line)
 			button:SetWidth(135)
 			button:SetCallback("OnClick", function() 
-				currentItemName = item.name				
+				currentItemIndex = item.name				
 				SendChatMessage(item.link.." "..line, CHANNEL_TO_MASTER_LOOT)
 			end)
 			itemGroup:AddChild(button)
@@ -459,15 +463,42 @@ function showLootFrame()
 		itemNote:SetText(item.note)
 		itemGroup:AddChild(itemNote)
 		
-		local button = AceGUI:Create("Button") 
-		button:SetText("LT")
-		button:SetWidth(50)
-		button:SetCallback("OnClick", function() 
+		local lootHistoryButton = AceGUI:Create("Button") 
+		lootHistoryButton:SetText("LT")
+		lootHistoryButton:SetWidth(50)
+		lootHistoryButton:SetCallback("OnClick", function() 
 			if item.maxRoll ~= nil then 
 				showLootHistory(item.rolls[item.maxRoll])
 			end
 		end)
+		itemGroup:AddChild(lootHistoryButton)
 	end
+	
+	local endButton = AceGUI:Create("Button") 
+	endButton:SetText("End Roll")
+	endButton:SetWidth(100)
+	endButton:SetCallback("OnClick", function() 
+		endRoll()
+	end)
+	lootFrame:AddChild(endButton)
+end
+
+function endRoll() 
+	local item = nil
+	if currentItemIndex ~= nil or currentItems ~= nil then item = currentItems[currentItemIndex] end
+	if item == nil then item = { ["link"] = ""} end
+	--SendChatMessage("/dbm broadcast timer 10 test")
+	local elapsed = 10
+	C_Timer.NewTicker(1, function() 
+		elapsed = elapsed - 1
+		if elapsed == 0 then
+			SendChatMessage("Rolls for "..item.link.." have closed!", CHANNEL_TO_MASTER_LOOT)
+		elseif elapsed == 9 then
+			SendChatMessage("Roll for "..item.link.." ends in 10 seconds", CHANNEL_TO_MASTER_LOOT)
+		elseif elapsed <= 3 then
+			SendChatMessage("Roll for "..item.link.." ends in "..elapsed.." seconds", CHANNEL_TO_MASTER_LOOT)
+		end
+	end, 10)
 end
 
 function showLootHistory(player) 
