@@ -453,7 +453,7 @@ function showLootFrame()
 			button:SetText(line)
 			button:SetWidth(135)
 			button:SetCallback("OnClick", function() 
-				currentItemIndex = item.name				
+				currentItemIndex = i				
 				SendChatMessage(item.link.." "..line, CHANNEL_TO_MASTER_LOOT)
 			end)
 			itemGroup:AddChild(button)
