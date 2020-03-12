@@ -446,8 +446,8 @@ function showLootFrame()
 		item.maxRoll = 0
 				
 		local splitPriority = mySplit(item.priority, ">")
-		for i = 1, #splitPriority do
-			local line = trim(splitPriority[i])
+		for j = 1, #splitPriority do
+			local line = trim(splitPriority[j])
 			
 			local button = AceGUI:Create("Button") 
 			button:SetText(line)
