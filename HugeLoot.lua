@@ -306,7 +306,7 @@ function processLoot()
 	end
 end
 
-local function showRoll(item) 
+function showRoll(item) 
 	if item.rollMonitor ~= nil then 
 		if item.maxRoll ~= 0 then 
 			item.rollMonitor:SetText(item.rolls[item.maxRoll].." - "..item.maxRoll)
